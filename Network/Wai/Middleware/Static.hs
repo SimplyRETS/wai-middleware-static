@@ -323,7 +323,7 @@ computeFileMeta fp =
        ct <- BSL.readFile fp
        return $ FileMeta
                 { fm_lastModified =
-                      BSC.pack $ formatTime defaultTimeLocale "%a, %d-%b-%Y %X %Z" mtime
+                      BSC.pack $ formatTime defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT" mtime
                 , fm_etag = BS.concat ["W/\"", Base16.encode (SHA1.hashlazy ct), "\""]
                 , fm_fileName = fp
                 }

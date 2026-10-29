@@ -1,6 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Middleware.StaticSpec (spec) where
 
+import           Data.String (fromString)
+import           Data.Time (defaultTimeLocale, formatTime)
+import           System.Directory (getModificationTime)
+
 import           Test.Hspec hiding (shouldBe, shouldReturn)
 import           Test.Hspec.Expectations.Lifted
 import           Test.Hspec.Wai
@@ -48,6 +52,12 @@ spec = around_ inTempDirectory $ do
         lookup "ETag" (simpleHeaders response) `shouldBe` Just etag
         request "GET" "/foo.html" [("If-None-Match", etag)] ""
           `shouldRespondWith` 304 {matchHeaders = ["ETag" <:> etag], matchBody = ""}
+
+      it "sends Last-Modified in the standard GMT format" $ do
+        modified <- liftIO $ getModificationTime "foo.html"
+        let expected = fromString $ formatTime defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT" modified
+        response <- get "/foo.html"
+        lookup "Last-Modified" (simpleHeaders response) `shouldBe` Just expected
   where
     cachedApp = do
       cache <- initCaching PublicStaticCaching
