@@ -3,7 +3,7 @@ module Network.Wai.Middleware.StaticSpec (spec) where
 
 import           Control.Monad (forM_)
 import           Data.String (fromString)
-import           Data.Time (defaultTimeLocale, formatTime)
+import           Data.Time (addUTCTime, defaultTimeLocale, formatTime)
 import           System.Directory (getModificationTime)
 
 import           Test.Hspec hiding (shouldBe, shouldReturn)
@@ -44,8 +44,8 @@ spec = around_ inTempDirectory $ do
           post "/foo.html" "" `shouldReturn` SResponse {
             simpleStatus = status404
           , simpleHeaders = [("Content-Type", "text/html")]
-           , simpleBody = "<h1>404: File Not Found!</h1>"
-           }
+          , simpleBody = "<h1>404: File Not Found!</h1>"
+          }
 
   describe "staticWithOptions" $ with cachedApp $ do
     before_ (writeFile "foo.html" "some content") $ do
@@ -72,6 +72,17 @@ spec = around_ inTempDirectory $ do
           request "GET" "/foo.html" [("If-None-Match", etag)] ""
             `shouldRespondWith` "some content"
         request "GET" "/missing.html" [("If-None-Match", "*")] "" `shouldRespondWith` 404
+
+      it "compares modern HTTP dates and ignores invalid dates" $ do
+        modified <- liftIO $ getModificationTime "foo.html"
+        let dateAt offset = fromString $ formatTime defaultTimeLocale
+              "%a, %d %b %Y %H:%M:%S GMT" (addUTCTime offset modified)
+        forM_ [dateAt 0, dateAt 60] $ \date ->
+          request "GET" "/foo.html" [("If-Modified-Since", date)] ""
+            `shouldRespondWith` 304 {matchBody = ""}
+        forM_ [dateAt (-60), "not a date", "Thu, 29 Oct 2099 00:00:00 GMT garbage"] $ \date ->
+          request "GET" "/foo.html" [("If-Modified-Since", date)] ""
+            `shouldRespondWith` "some content"
 
   describe "conditional requests through Warp" $ do
     it "ignores If-Modified-Since when If-None-Match does not match" $ withCachedServer $ \manager req -> do

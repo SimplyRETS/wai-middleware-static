@@ -268,7 +268,14 @@ unsafeStaticPolicyWithOptions options p app req callback =
             Just value ->
                 let candidate = trimOWS value
                 in candidate == "*" || stripWeak candidate == stripWeak (fm_etag fm)
-            Nothing -> Just (fm_lastModified fm) == modSince
+            Nothing ->
+                case (parseHttpDate (fm_lastModified fm), modSince >>= parseHttpDate) of
+                  (Just modified, Just since) -> modified <= since
+                  _ -> False
+      -- Only modern HTTP dates (IMF-fixdate); obsolete formats are not parsed here.
+      parseHttpDate :: BS.ByteString -> Maybe UTCTime
+      parseHttpDate = parseTimeM True defaultTimeLocale
+          "%a, %d %b %Y %H:%M:%S GMT" . BSC.unpack
       stripWeak value
           | "W/" `BS.isPrefixOf` value = BS.drop 2 value
           | otherwise = value
