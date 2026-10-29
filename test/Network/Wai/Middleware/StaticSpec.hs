@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Middleware.StaticSpec (spec) where
 
+import           Control.Monad (forM_)
 import           Data.String (fromString)
 import           Data.Time (defaultTimeLocale, formatTime)
 import           System.Directory (getModificationTime)
@@ -13,6 +14,8 @@ import           Test.Mockery.Directory
 import           Web.Scotty (scottyApp)
 import           Network.Wai.Test (SResponse(..))
 import           Network.HTTP.Types.Status
+import qualified Network.HTTP.Client as Http
+import qualified Network.Wai.Handler.Warp as Warp
 
 import           Network.Wai.Middleware.Static
 
@@ -58,8 +61,35 @@ spec = around_ inTempDirectory $ do
         let expected = fromString $ formatTime defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT" modified
         response <- get "/foo.html"
         lookup "Last-Modified" (simpleHeaders response) `shouldBe` Just expected
+
+  describe "conditional requests through Warp" $ do
+    it "ignores If-Modified-Since when If-None-Match does not match" $ withCachedServer $ \manager req -> do
+      initial <- Http.httpLbs req manager
+      modified <- maybe (fail "Missing Last-Modified") return $ lookup "Last-Modified" (Http.responseHeaders initial)
+      forM_ ["\"outdated\"", "", "not-an-etag"] $ \etag -> do
+        response <- Http.httpLbs req {Http.requestHeaders = [
+            ("If-None-Match", etag), ("If-Modified-Since", modified)]} manager
+        Http.responseStatus response `shouldBe` status200
+        Http.responseBody response `shouldBe` "some content"
+
+    it "returns an empty 304 with cache headers when the ETag matches" $ withCachedServer $ \manager req -> do
+      initial <- Http.httpLbs req manager
+      etag <- maybe (fail "Missing ETag") return $ lookup "ETag" (Http.responseHeaders initial)
+      response <- Http.httpLbs req {Http.requestHeaders = [
+          ("If-None-Match", etag), ("If-Modified-Since", "Sat, 01 Jan 2000 00:00:00 GMT")]} manager
+      Http.responseStatus response `shouldBe` status304
+      Http.responseBody response `shouldBe` ""
+      forM_ ["ETag", "Last-Modified", "Cache-Control", "Vary"] $ \header ->
+        lookup header (Http.responseHeaders response) `shouldBe` lookup header (Http.responseHeaders initial)
   where
     cachedApp = do
       cache <- initCaching PublicStaticCaching
       staticWithOptions defaultOptions {cacheContainer = cache}
         `fmap` scottyApp (return ())
+
+    withCachedServer action = do
+      writeFile "foo.html" "some content"
+      Warp.testWithApplication cachedApp $ \port -> do
+        manager <- Http.newManager $ Http.managerSetProxy Http.noProxy Http.defaultManagerSettings
+        let req = Http.defaultRequest {Http.host = "127.0.0.1", Http.port = port, Http.path = "/foo.html"}
+        action manager req

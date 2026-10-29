@@ -63,11 +63,13 @@ test-suite spec
                        hspec == 2.*,
                        hspec-expectations-lifted,
                        hspec-wai >= 0.6.3,
+                       http-client,
                        mockery,
                        scotty,
                        wai-extra,
                        http-types,
                        time,
+                       warp,
                        wai-middleware-static
   build-tool-depends:  hspec-discover:hspec-discover == 2.*
   GHC-options:         -Wall
