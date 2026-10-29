@@ -265,8 +265,15 @@ unsafeStaticPolicyWithOptions options p app req callback =
           lookup header $ requestHeaders req
       checkNotModified fm modSince etag =
           case etag of
-            Just value -> fm_etag fm == value
+            Just value ->
+                let candidate = trimOWS value
+                in candidate == "*" || stripWeak candidate == stripWeak (fm_etag fm)
             Nothing -> Just (fm_lastModified fm) == modSince
+      stripWeak value
+          | "W/" `BS.isPrefixOf` value = BS.drop 2 value
+          | otherwise = value
+      trimOWS = fst . BSC.spanEnd isOWS . BSC.dropWhile isOWS
+          where isOWS c = c == ' ' || c == '\t'
       computeHeaders fm cs =
           case cs of
             NoCaching -> []

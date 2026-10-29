@@ -62,6 +62,17 @@ spec = around_ inTempDirectory $ do
         response <- get "/foo.html"
         lookup "Last-Modified" (simpleHeaders response) `shouldBe` Just expected
 
+      it "weakly compares a single ETag and handles the wildcard" $ do
+        forM_ ["\"94e66df8cd09d410c62d9e0dc59d3a884e458e05\"",
+               " \tW/\"94e66df8cd09d410c62d9e0dc59d3a884e458e05\"\t ",
+               "*", " \t*\t "] $ \etag ->
+          request "GET" "/foo.html" [("If-None-Match", etag)] ""
+            `shouldRespondWith` 304 {matchBody = ""}
+        forM_ ["\"outdated\"", "94e66df8cd09d410c62d9e0dc59d3a884e458e05"] $ \etag ->
+          request "GET" "/foo.html" [("If-None-Match", etag)] ""
+            `shouldRespondWith` "some content"
+        request "GET" "/missing.html" [("If-None-Match", "*")] "" `shouldRespondWith` 404
+
   describe "conditional requests through Warp" $ do
     it "ignores If-Modified-Since when If-None-Match does not match" $ withCachedServer $ \manager req -> do
       initial <- Http.httpLbs req manager
