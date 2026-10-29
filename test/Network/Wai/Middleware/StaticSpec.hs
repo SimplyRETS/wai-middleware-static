@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Middleware.StaticSpec (spec) where
 
-import           Test.Hspec hiding (shouldReturn)
+import           Test.Hspec hiding (shouldBe, shouldReturn)
 import           Test.Hspec.Expectations.Lifted
 import           Test.Hspec.Wai
 import           Test.Mockery.Directory
@@ -37,5 +37,19 @@ spec = around_ inTempDirectory $ do
           post "/foo.html" "" `shouldReturn` SResponse {
             simpleStatus = status404
           , simpleHeaders = [("Content-Type", "text/html")]
-          , simpleBody = "<h1>404: File Not Found!</h1>"
-          }
+           , simpleBody = "<h1>404: File Not Found!</h1>"
+           }
+
+  describe "staticWithOptions" $ with cachedApp $ do
+    before_ (writeFile "foo.html" "some content") $ do
+      it "sends a quoted weak ETag and accepts it on revalidation" $ do
+        let etag = "W/\"94e66df8cd09d410c62d9e0dc59d3a884e458e05\""
+        response <- get "/foo.html"
+        lookup "ETag" (simpleHeaders response) `shouldBe` Just etag
+        request "GET" "/foo.html" [("If-None-Match", etag)] ""
+          `shouldRespondWith` 304 {matchHeaders = ["ETag" <:> etag], matchBody = ""}
+  where
+    cachedApp = do
+      cache <- initCaching PublicStaticCaching
+      staticWithOptions defaultOptions {cacheContainer = cache}
+        `fmap` scottyApp (return ())

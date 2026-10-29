@@ -324,7 +324,7 @@ computeFileMeta fp =
        return $ FileMeta
                 { fm_lastModified =
                       BSC.pack $ formatTime defaultTimeLocale "%a, %d-%b-%Y %X %Z" mtime
-                , fm_etag = Base16.encode (SHA1.hashlazy ct)
+                , fm_etag = BS.concat ["W/\"", Base16.encode (SHA1.hashlazy ct), "\""]
                 , fm_fileName = fp
                 }
 
